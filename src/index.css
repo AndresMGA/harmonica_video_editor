@@ -1,0 +1,53 @@
+:root {
+  --ui-scale: 0.7;
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #f6f7fb;
+  background:
+    radial-gradient(circle at top left, rgba(59, 130, 246, 0.24), transparent 28%),
+    radial-gradient(circle at top right, rgba(244, 114, 182, 0.18), transparent 24%),
+    linear-gradient(180deg, #10162d 0%, #090b16 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.85rem 1.35rem;
+  background: linear-gradient(135deg, #80a7ff 0%, #5dd5c2 100%);
+  color: #08111f;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid #8db2ff;
+  outline-offset: 2px;
+}
+
+#root {
+  width: 100%;
+  padding: 1rem 1.25rem;
+}
+
+@media (max-width: 640px) {
+  #root {
+    padding: 0.75rem;
+  }
+}

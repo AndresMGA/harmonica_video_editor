@@ -1,0 +1,14 @@
+[
+  {
+    "in": "/home/andres/harmonica_video_editor/tmp/1775830057608-score.mscz",
+    "out": "/home/andres/harmonica_video_editor/tmp/score.svg"
+  },
+  {
+    "in": "/home/andres/harmonica_video_editor/tmp/1775830057608-score.mscz",
+    "out": "/home/andres/harmonica_video_editor/tmp/positions.spos"
+  },
+  {
+    "in": "/home/andres/harmonica_video_editor/tmp/1775830057608-score.mscz",
+    "out": "/home/andres/harmonica_video_editor/tmp/countInAndMetronome.mid"
+  }
+]

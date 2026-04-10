@@ -1,0 +1,59 @@
+{
+  "name": "harmonica_video_editor",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:electron": "node scripts/dev-electron.mjs",
+    "build": "vite build",
+    "build:electron": "npm run build && electron-builder",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@ffmpeg/core": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@supabase/supabase-js": "^2.100.1",
+    "adm-zip": "^0.5.17",
+    "fast-xml-parser": "^5.5.10",
+    "midi-file": "^1.2.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "eslint": "^9.9.0",
+    "eslint-plugin-react": "^7.35.0",
+    "eslint-plugin-react-hooks": "^5.1.0-rc.0",
+    "eslint-plugin-react-refresh": "^0.4.9",
+    "globals": "^15.9.0",
+    "vite": "^5.4.1"
+  },
+  "build": {
+    "appId": "com.andres.harmonica-video-editor",
+    "productName": "Harmonica Video Editor",
+    "directories": {
+      "buildResources": "public"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo"
+    }
+  }
+}

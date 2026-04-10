@@ -1,0 +1,10 @@
+{
+  "nHoles": 12,
+  "jobsDone": 3,
+  "countInOffset": 2000,
+  "updateJson": true,
+  "updateSvg": true,
+  "updateHarmonica": false,
+  "updateAccompaniment": false,
+  "updateMetronome": false
+}
