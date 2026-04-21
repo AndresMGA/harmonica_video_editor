@@ -5,6 +5,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/portable_common.sh"
 
+plugin_source="$SCRIPT_DIR/new.qml"
+plugin_target="/home/andres/Documents/MuseScore4/Plugins/new.qml"
+
+if [ ! -f "$plugin_source" ]; then
+    echo "plugin source not found: $plugin_source" >&2
+    exit 1
+fi
+
+mkdir -p "$(dirname "$plugin_target")"
+cp "$plugin_source" "$plugin_target"
+echo "installed MuseScore plugin: $plugin_target"
+
 if [ "$#" -ne 8 ]; then
     echo "usage: $0 INPUT_SCORE EXISTING_VIDEO NHOLES UPDATE_JSON UPDATE_SVG UPDATE_HARMONICA UPDATE_ACCOMPANIMENT UPDATE_METRONOME" >&2
     exit 1
@@ -58,6 +70,7 @@ tmp_dir="$HOME/harmonica_video_editor/tmp"
 job_json="$SCRIPT_DIR/job.json"
 status_json="$SCRIPT_DIR/status.json"
 musescore_cmd="$(find_musescore_cmd)"
+song_with_tabs="$tmp_dir/song_with_tabs.mscz"
 
 mkdir -p "$tmp_dir"
 
@@ -67,7 +80,7 @@ cat > "$job_json" <<JOBEOF
 [
   {
     "in": "$input_score",
-    "out": "$tmp_dir/score.svg"
+    "out": "$song_with_tabs"
   },
   {
     "in": "$input_score",
@@ -97,9 +110,22 @@ STATUSEOF
 echo "calling musescore batch export"
 "$musescore_cmd" -j "$job_json" --extension musescore://extensions/v1/new.qml
 echo "musescore batch export completed"
+echo "song_with_tabs.mscz generated at $song_with_tabs"
 echo "events.json generated at $tmp_dir/events.json"
 echo "positions.spos generated at $tmp_dir/positions.spos"
 echo "countInAndMetronome.mid generated at $tmp_dir/countInAndMetronome.mid"
+
+if [ "$update_svg" = true ]; then
+    echo "clearing previous score*.svg outputs"
+    rm -f "$tmp_dir"/score.svg "$tmp_dir"/score-*.svg
+    echo "exporting multi-page SVG from song_with_tabs.mscz"
+    "$musescore_cmd" "$song_with_tabs" -o "$tmp_dir/score.svg"
+    echo "svg export completed"
+    if ls "$tmp_dir"/score*.svg >/dev/null 2>&1; then
+        echo "generated SVG files:"
+        ls -1 "$tmp_dir"/score*.svg
+    fi
+fi
 
 if [ "$update_harmonica" = false ] && [ "$update_accompaniment" = false ] && [ "$update_metronome" = false ]; then
     echo "all audio updates are unchecked; skipping stem rendering and video assembly"

@@ -51,6 +51,26 @@ declare global {
         signal?: string | null
         message?: string
       }>
+      listLocalFiles: (payload: {
+        directoryPath: string
+        prefix?: string
+        extension?: string
+      }) => Promise<{
+        ok: boolean
+        directoryPath?: string
+        files?: Array<{
+          name: string
+          path: string
+        }>
+        message?: string
+      }>
+      deleteLocalFiles: (payload: {
+        filePaths: string[]
+      }) => Promise<{
+        ok: boolean
+        deleted?: string[]
+        message?: string
+      }>
       readLocalFile: (payload: {
         filePath: string
       }) => Promise<{

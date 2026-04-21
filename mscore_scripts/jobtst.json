@@ -1,0 +1,12 @@
+[
+
+  {
+    "in": "/home/andres/harmonica_video_editor/tmp/tst.musicxml",
+    "plugin":"new_ms3.qml",
+    "out": "/home/andres/harmonica_video_editor/tmp/songtst.mscz"
+          
+  }
+          
+  
+
+]

@@ -56,7 +56,8 @@ function isMetronomeTrack(track) {
   );
 }
 
-function splitMidiByTrackIndex(midi, targetTrackIndex) {
+function splitMidiByTrackIndices(midi, targetTrackIndices) {
+  const keepIndices = new Set(targetTrackIndices);
   const split = {
     header: { ...midi.header },
     tracks: [],
@@ -70,7 +71,7 @@ function splitMidiByTrackIndex(midi, targetTrackIndex) {
       carryDelta += event.deltaTime || 0;
 
       const isChannelEvent = typeof event.channel === "number";
-      const keep = !isChannelEvent || trackIndex === targetTrackIndex;
+      const keep = !isChannelEvent || keepIndices.has(trackIndex);
 
       if (!keep) {
         continue;
@@ -101,7 +102,7 @@ function classifyStemTracks(midi) {
 
     const info = {
       index,
-      name: trackName(track),
+      originalName: trackName(track),
       channels,
     };
 
@@ -113,51 +114,55 @@ function classifyStemTracks(midi) {
     musicalTracks.push(info);
   });
 
-  const stems = [];
-
-  if (musicalTracks[0]) {
-    stems.push({
-      name: "harmonica",
-      trackIndex: musicalTracks[0].index,
-      dry: false,
-      sourceName: musicalTracks[0].name,
-      channels: musicalTracks[0].channels,
-    });
+  if (!musicalTracks.length) {
+    return [];
   }
 
-  if (musicalTracks[1]) {
+  const stems = [
+    {
+      name: "harmonica",
+      trackIndices: [musicalTracks[0].index],
+      sourceNames: ["Harmonica"],
+      dry: false,
+      channels: musicalTracks[0].channels,
+    },
+  ];
+
+  const accompanimentTracks = musicalTracks.slice(1);
+  if (accompanimentTracks.length) {
     stems.push({
       name: "accompaniment",
-      trackIndex: musicalTracks[1].index,
+      trackIndices: accompanimentTracks.map((track) => track.index),
+      sourceNames: accompanimentTracks.map((_, index) => `Accompaniment${index + 1}`),
       dry: false,
-      sourceName: musicalTracks[1].name,
-      channels: musicalTracks[1].channels,
+      channels: accompanimentTracks.flatMap((track) => track.channels),
     });
   }
 
   if (metronomeTrack) {
     stems.push({
       name: "metronome",
-      trackIndex: metronomeTrack.index,
+      trackIndices: [metronomeTrack.index],
+      sourceNames: ["Metronome"],
       dry: true,
-      sourceName: metronomeTrack.name,
       channels: metronomeTrack.channels,
     });
   }
 
-  return stems;
+  return { stems, musicalTracks, metronomeTrack };
 }
 
-function canonicalTrackName(stemName) {
-  switch (stemName) {
-    case "harmonica":
-      return "Harmonica";
-    case "accompaniment":
-      return "Accompaniment";
-    case "metronome":
-      return "Metronome";
-    default:
-      return stemName;
+function applyCanonicalTrackNames(midi, musicalTracks, metronomeTrack) {
+  if (musicalTracks[0]) {
+    setTrackName(midi.tracks[musicalTracks[0].index], "Harmonica");
+  }
+
+  for (let i = 1; i < musicalTracks.length; i += 1) {
+    setTrackName(midi.tracks[musicalTracks[i].index], `Accompaniment${i}`);
+  }
+
+  if (metronomeTrack) {
+    setTrackName(midi.tracks[metronomeTrack.index], "Metronome");
   }
 }
 
@@ -201,7 +206,7 @@ async function main() {
 
   if (!inputMidi) {
     console.error(
-      "usage: node render_midi_stems_fluidsynth.js INPUT_MIDI [OUTPUT_DIR] [SOUNDFONT_SF3]"
+      "usage: node render_midi_stems.js INPUT_MIDI [OUTPUT_DIR] [SOUNDFONT_SF3]"
     );
     process.exit(1);
   }
@@ -209,37 +214,34 @@ async function main() {
   const inputMidiPath = path.resolve(inputMidi);
   const midiFile = await fs.readFile(inputMidiPath);
   const midi = parseMidi(midiFile);
-  const stemLayout = classifyStemTracks(midi);
+  const layout = classifyStemTracks(midi);
 
-  if (stemLayout.length < 2) {
+  if (!layout || layout.stems.length < 2) {
     throw new Error(
       "expected at least harmonica and metronome tracks in the MIDI export"
     );
   }
 
+  const { stems, musicalTracks, metronomeTrack } = layout;
+
   await fs.mkdir(outputDir, { recursive: true });
 
-  for (const stem of stemLayout) {
-    setTrackName(midi.tracks[stem.trackIndex], canonicalTrackName(stem.name));
-    stem.sourceName = canonicalTrackName(stem.name);
-  }
-
+  applyCanonicalTrackNames(midi, musicalTracks, metronomeTrack);
   await fs.writeFile(inputMidiPath, Buffer.from(writeMidi(midi)));
 
   console.log(`input midi: ${inputMidiPath}`);
   console.log(`soundfont: ${soundFontPath}`);
   console.log(`renderer: ${FLUIDSYNTH_BIN}`);
   console.log(
-    `stems: ${stemLayout
-      .map((stem) => `${stem.name}<-${stem.sourceName || `track ${stem.trackIndex}`} ch=${stem.channels.join(",")}`)
+    `stems: ${stems
+      .map((stem) => `${stem.name}<-${stem.sourceNames.join(",")} tracks=${stem.trackIndices.join(",")}`)
       .join(" | ")}`
   );
 
-  for (const stem of stemLayout) {
-    const splitMidi = splitMidiByTrackIndex(midi, stem.trackIndex);
-    const name = stem.name;
-    const splitMidiPath = path.join(outputDir, `${name}.mid`);
-    const splitWavPath = path.join(outputDir, `${name}.wav`);
+  for (const stem of stems) {
+    const splitMidi = splitMidiByTrackIndices(midi, stem.trackIndices);
+    const splitMidiPath = path.join(outputDir, `${stem.name}.mid`);
+    const splitWavPath = path.join(outputDir, `${stem.name}.wav`);
 
     await fs.writeFile(splitMidiPath, Buffer.from(writeMidi(splitMidi)));
     runFluidsynth({
@@ -250,7 +252,7 @@ async function main() {
     });
 
     console.log(
-      `${name}: track ${stem.trackIndex} (${stem.sourceName || "unnamed"}) -> ${splitMidiPath} / ${splitWavPath}`
+      `${stem.name}: ${stem.sourceNames.join(", ")} -> ${splitMidiPath} / ${splitWavPath}`
     );
   }
 }

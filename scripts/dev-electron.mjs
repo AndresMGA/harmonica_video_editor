@@ -35,7 +35,7 @@ function shutdown(code = 0) {
   process.exit(code)
 }
 
-const viteProcess = spawnProcess('npx', ['vite', '--host', '127.0.0.1', '--port', '3000'])
+const viteProcess = spawnProcess('npx', ['vite', '--host', '127.0.0.1', '--port', '3001'])
 
 viteProcess.on('exit', (code) => {
   if (!shuttingDown) {
@@ -44,7 +44,7 @@ viteProcess.on('exit', (code) => {
 })
 
 function waitForDevServer(attempt = 0) {
-  fetch('http://127.0.0.1:3000')
+  fetch('http://127.0.0.1:3001')
     .then((response) => {
       if (!response.ok) {
         throw new Error(`Unexpected response: ${response.status}`)

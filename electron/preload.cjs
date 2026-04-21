@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openFileInVSCode: (payload) => ipcRenderer.invoke('open-file-in-vscode', payload),
   runExportCommand: (payload) => ipcRenderer.invoke('run-export-command', payload),
   runMediaGeneration: (payload) => ipcRenderer.invoke('run-media-generation', payload),
+  listLocalFiles: (payload) => ipcRenderer.invoke('list-local-files', payload),
+  deleteLocalFiles: (payload) => ipcRenderer.invoke('delete-local-files', payload),
   readLocalFile: (payload) => ipcRenderer.invoke('read-local-file', payload),
   onMuseScoreLog: (callback) => {
     const listener = (_event, payload) => callback(payload)

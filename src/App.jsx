@@ -136,14 +136,45 @@ function contentTypeForPath(filePath) {
   }
 }
 
-function preferredSvgStoragePath(folderPath, files) {
-  const svgFiles = (files ?? []).filter((file) => file.extension === '.svg')
-  const preferred =
-    svgFiles.find((file) => file.name === 'score-1.svg') ||
-    svgFiles.find((file) => file.name === 'score.svg') ||
-    svgFiles[0]
+async function generatedSvgUploadTargets(folderPath) {
+  const result = await window.electronAPI?.listLocalFiles?.({
+    directoryPath: '/home/andres/harmonica_video_editor/tmp',
+    prefix: 'score',
+    extension: '.svg',
+  })
 
-  return preferred?.path ?? `${folderPath}/score.svg`
+  if (!result?.ok || !Array.isArray(result.files)) {
+    return []
+  }
+
+  const svgFiles = result.files
+    .filter((file) => /^score(?:-\d+)?\.svg$/i.test(file.name))
+    .sort((left, right) => left.name.localeCompare(right.name, undefined, { numeric: true }))
+
+  return svgFiles.map((file) => ({
+    localPath: file.path,
+    storagePath: `${folderPath}/${file.name}`,
+  }))
+}
+
+async function cleanupGeneratedMediaFiles() {
+  const svgTargets = await generatedSvgUploadTargets('')
+  const filePaths = [
+    localTmpPath('countInAndMetronome.mid'),
+    localTmpPath('events.json'),
+    localTmpPath('positions.spos'),
+    localTmpPath('song_with_tabs.mscz'),
+    ...svgTargets.map((target) => target.localPath),
+  ]
+
+  const uniqueFilePaths = [...new Set(filePaths.filter(Boolean))]
+  const result = await window.electronAPI?.deleteLocalFiles?.({ filePaths: uniqueFilePaths })
+
+  if (!result?.ok) {
+    throw new Error(result?.message || 'Failed to clean up generated media files.')
+  }
+
+  return result.deleted ?? []
 }
 
 async function readLocalFileBlob(filePath) {
@@ -2541,10 +2572,16 @@ function App() {
         }
 
         if (updateMediaState.updateSvg) {
-          uploadTargets.push({
-            localPath: localTmpPath('score.svg'),
-            storagePath: preferredSvgStoragePath(folderPath, folderListing.files),
-          })
+          const svgTargets = await generatedSvgUploadTargets(folderPath)
+
+          if (svgTargets.length) {
+            uploadTargets.push(...svgTargets)
+          } else {
+            uploadTargets.push({
+              localPath: localTmpPath('score.svg'),
+              storagePath: `${folderPath}/score.svg`,
+            })
+          }
         }
 
         if (audioUpdateRequested) {
@@ -2610,6 +2647,10 @@ function App() {
         }
 
         pushUpdateMediaLog('Upload step finished successfully.')
+        const deletedFiles = await cleanupGeneratedMediaFiles()
+        if (deletedFiles.length) {
+          pushUpdateMediaLog(`Cleaned up ${deletedFiles.length} generated tmp file(s).`)
+        }
 
         const targetNode = findTreeNode(browserState.nodes, folderPath)
         if (targetNode) {

@@ -286,7 +286,7 @@ function createWindow() {
   })
 
   if (isDev) {
-    mainWindow.loadURL('http://127.0.0.1:3000')
+    mainWindow.loadURL('http://127.0.0.1:3001')
     mainWindow.webContents.openDevTools({ mode: 'detach' })
     return
   }
@@ -435,6 +435,78 @@ app.whenReady().then(() => {
         message:
           error instanceof Error ? error.message : 'Failed to run media generation.',
       }
+    }
+  })
+
+  ipcMain.handle('list-local-files', async (_event, payload) => {
+    const directoryPath = payload?.directoryPath
+    const prefix = payload?.prefix ?? ''
+    const extension = payload?.extension ?? ''
+
+    if (!directoryPath) {
+      return {
+        ok: false,
+        message: 'A local directory path is required.',
+      }
+    }
+
+    try {
+      const entries = await fs.readdir(directoryPath, { withFileTypes: true })
+      const files = entries
+        .filter((entry) => entry.isFile())
+        .map((entry) => entry.name)
+        .filter((name) => (!prefix || name.startsWith(prefix)) && (!extension || name.endsWith(extension)))
+        .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+        .map((name) => ({
+          name,
+          path: path.join(directoryPath, name),
+        }))
+
+      return {
+        ok: true,
+        directoryPath,
+        files,
+      }
+    } catch (error) {
+      return {
+        ok: false,
+        message: error instanceof Error ? error.message : 'Failed to list local files.',
+      }
+    }
+  })
+
+  ipcMain.handle('delete-local-files', async (_event, payload) => {
+    const filePaths = Array.isArray(payload?.filePaths) ? payload.filePaths : []
+
+    if (!filePaths.length) {
+      return {
+        ok: true,
+        deleted: [],
+      }
+    }
+
+    const deleted = []
+
+    for (const filePath of filePaths) {
+      if (!filePath) {
+        continue
+      }
+
+      try {
+        await fs.rm(filePath, { force: true })
+        deleted.push(filePath)
+      } catch (error) {
+        return {
+          ok: false,
+          message: error instanceof Error ? error.message : 'Failed to delete local files.',
+          deleted,
+        }
+      }
+    }
+
+    return {
+      ok: true,
+      deleted,
     }
   })
 
