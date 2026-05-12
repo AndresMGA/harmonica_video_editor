@@ -17,10 +17,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/ffmpeg_common.sh"
 
 ffmpeg_bin=$FFMPEG_BIN
-ffprobe_bin=${FFPROBE_BIN:-ffprobe}
+ffprobe_bin=$FFPROBE_BIN
 work_dir="$tmp_dir/ffmpeg_build"
 output_video="$tmp_dir/video.mp4"
 target_peak_db=-6
+
+if ! command -v "$ffmpeg_bin" >/dev/null 2>&1 && [ ! -x "$ffmpeg_bin" ]; then
+    echo "Missing ffmpeg executable: $ffmpeg_bin" >&2
+    echo "On macOS, place an executable ffmpeg binary at the project root: ./ffmpeg" >&2
+    exit 1
+fi
 
 harmonica_wav="$tmp_dir/harmonica.wav"
 accompaniment_wav="$tmp_dir/accompaniment.wav"
@@ -83,12 +89,79 @@ rm -f \
 
 duration_of() {
     local file_path=$1
+    local duration
+
     if [ -z "$file_path" ] || [ ! -f "$file_path" ]; then
         echo "0"
         return
     fi
 
-    "$ffprobe_bin" -v error -show_entries format=duration -of csv=p=0 "$file_path" 2>/dev/null || echo "0"
+    if command -v "$ffprobe_bin" >/dev/null 2>&1; then
+        duration=$("$ffprobe_bin" -v error -show_entries format=duration -of csv=p=0 "$file_path" 2>/dev/null || true)
+
+        if [ -n "$duration" ] && [ "$duration" != "N/A" ]; then
+            echo "$duration"
+            return
+        fi
+    fi
+
+    { "$ffmpeg_bin" -hide_banner -i "$file_path" 2>&1 || true; } |
+        awk '
+            /Duration:/ {
+                split($2, parts, ":")
+                seconds = (parts[1] * 3600) + (parts[2] * 60) + parts[3]
+                gsub(/,/, "", seconds)
+                printf "%.6f\n", seconds
+                found = 1
+                exit
+            }
+            END {
+                if (!found) {
+                    print "0"
+                }
+            }
+        '
+}
+
+audio_channel_count() {
+    local file_path=$1
+    local channel_count
+
+    if [ -z "$file_path" ] || [ ! -f "$file_path" ]; then
+        echo "0"
+        return
+    fi
+
+    if command -v "$ffprobe_bin" >/dev/null 2>&1; then
+        channel_count=$("$ffprobe_bin" -v error -select_streams a:0 -show_entries stream=channels -of csv=p=0 "$file_path" 2>/dev/null || true)
+
+        if [ -n "$channel_count" ]; then
+            echo "$channel_count"
+            return
+        fi
+    fi
+
+    { "$ffmpeg_bin" -hide_banner -i "$file_path" 2>&1 || true; } |
+        awk '
+            /Audio:/ {
+                if ($0 ~ /5\.1/) {
+                    print 6
+                } else if ($0 ~ /stereo/) {
+                    print 2
+                } else if ($0 ~ /mono/) {
+                    print 1
+                } else {
+                    print 0
+                }
+                found = 1
+                exit
+            }
+            END {
+                if (!found) {
+                    print 0
+                }
+            }
+        '
 }
 
 max_duration() {
@@ -155,7 +228,7 @@ extract_existing_5_1_channels() {
     local channel_count
     local pan_filter
 
-    channel_count=$("$ffprobe_bin" -v error -select_streams a:0 -show_entries stream=channels -of csv=p=0 "$video_path" 2>/dev/null || echo "0")
+    channel_count=$(audio_channel_count "$video_path")
 
     case "$channel_count" in
         0|'')

@@ -27,4 +27,19 @@ resolve_project_ffmpeg() {
   printf '%s\n' "ffmpeg"
 }
 
+resolve_project_ffprobe() {
+  local script_dir
+  script_dir="$(ffmpeg_scripts_dir)"
+  local project_root
+  project_root="$(cd "$script_dir/.." && pwd)"
+
+  if [[ "$(uname -s)" == "Darwin" ]] && [ -x "$project_root/ffprobe" ]; then
+    printf '%s\n' "$project_root/ffprobe"
+    return
+  fi
+
+  printf '%s\n' "ffprobe"
+}
+
 export FFMPEG_BIN="${FFMPEG_BIN:-$(resolve_project_ffmpeg)}"
+export FFPROBE_BIN="${FFPROBE_BIN:-$(resolve_project_ffprobe)}"

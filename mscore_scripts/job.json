@@ -1,14 +1,14 @@
 [
   {
-    "in": "/Users/andres/harmonica_video_editor/tmp/1778618127206-song.mscz",
+    "in": "/Users/andres/harmonica_video_editor/tmp/1778622332248-song.mscz",
     "out": "/Users/andres/harmonica_video_editor/tmp/song_with_tabs.mscz"
   },
   {
-    "in": "/Users/andres/harmonica_video_editor/tmp/1778618127206-song.mscz",
+    "in": "/Users/andres/harmonica_video_editor/tmp/1778622332248-song.mscz",
     "out": "/Users/andres/harmonica_video_editor/tmp/positions.spos"
   },
   {
-    "in": "/Users/andres/harmonica_video_editor/tmp/1778618127206-song.mscz",
+    "in": "/Users/andres/harmonica_video_editor/tmp/1778622332248-song.mscz",
     "out": "/Users/andres/harmonica_video_editor/tmp/countInAndMetronome.mid"
   }
 ]
