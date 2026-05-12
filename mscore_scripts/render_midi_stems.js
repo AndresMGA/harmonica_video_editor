@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from "node:fs/promises";
+import { accessSync, constants } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -10,7 +11,82 @@ import { parseMidi, writeMidi } from "midi-file";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DEFAULT_SF3 = path.resolve(__dirname, "..", "MuseScore_General.sf3");
-const FLUIDSYNTH_BIN = "fluidsynth";
+
+function isExecutable(filePath) {
+  try {
+    accessSync(filePath, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findOnPath(command) {
+  const pathEntries = (process.env.PATH || "").split(path.delimiter).filter(Boolean);
+
+  for (const pathEntry of pathEntries) {
+    const candidate = path.join(pathEntry, command);
+
+    if (isExecutable(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
+}
+
+function findFluidSynthBin() {
+  if (process.env.FLUIDSYNTH_BIN) {
+    return process.env.FLUIDSYNTH_BIN;
+  }
+
+  const repoRoot = path.resolve(__dirname, "..");
+  const candidates = [
+    path.join(repoRoot, "fluidsynth"),
+    path.join(repoRoot, "bin", "fluidsynth"),
+    findOnPath("fluidsynth"),
+  ];
+
+  if (process.platform === "darwin") {
+    candidates.push(
+      "/opt/homebrew/bin/fluidsynth",
+      "/usr/local/bin/fluidsynth",
+      "/opt/local/bin/fluidsynth"
+    );
+  }
+
+  return candidates.find((candidate) => candidate && isExecutable(candidate)) || "";
+}
+
+const FLUIDSYNTH_BIN = findFluidSynthBin();
+
+function findMuseScoreBin() {
+  if (process.env.MUSESCORE_BIN) {
+    return process.env.MUSESCORE_BIN;
+  }
+
+  const candidates = [
+    findOnPath("musescore"),
+    findOnPath("mscore"),
+    findOnPath("MuseScore4"),
+    findOnPath("MuseScore"),
+  ];
+
+  if (process.platform === "darwin") {
+    candidates.push(
+      "/Applications/MuseScore 4.app/Contents/MacOS/mscore",
+      "/Applications/MuseScore 4.app/Contents/MacOS/MuseScore",
+      "/Applications/MuseScore Studio.app/Contents/MacOS/mscore",
+      "/Applications/MuseScore Studio.app/Contents/MacOS/MuseScore Studio"
+    );
+  }
+
+  return candidates.find((candidate) => candidate && isExecutable(candidate)) || "";
+}
+
+const MUSESCORE_BIN = findMuseScoreBin();
+const RENDERER_BIN = FLUIDSYNTH_BIN || MUSESCORE_BIN;
+const RENDERER_NAME = FLUIDSYNTH_BIN ? "fluidsynth" : "musescore";
 
 function trackName(track) {
   const event = track.find((item) => item.type === "trackName" && item.text);
@@ -167,6 +243,12 @@ function applyCanonicalTrackNames(midi, musicalTracks, metronomeTrack) {
 }
 
 function runFluidsynth({ soundFontPath, inputMidiPath, outPath, dry }) {
+  if (!FLUIDSYNTH_BIN) {
+    throw new Error(
+      "FluidSynth executable not found. Install fluidsynth, add a repo-root ./fluidsynth binary, or set FLUIDSYNTH_BIN=/path/to/fluidsynth."
+    );
+  }
+
   const args = ["-ni", "-F", outPath, "-T", "wav"];
 
   if (dry) {
@@ -193,6 +275,37 @@ function runFluidsynth({ soundFontPath, inputMidiPath, outPath, dry }) {
       `fluidsynth failed for ${inputMidiPath} with exit code ${result.status}`
     );
   }
+}
+
+function runMuseScoreRender({ inputMidiPath, outPath }) {
+  if (!MUSESCORE_BIN) {
+    throw new Error(
+      "No MIDI renderer found. Install FluidSynth, add ./fluidsynth, set FLUIDSYNTH_BIN, or set MUSESCORE_BIN=/path/to/mscore."
+    );
+  }
+
+  const result = spawnSync(MUSESCORE_BIN, [inputMidiPath, "-o", outPath], {
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+
+  if (result.status !== 0) {
+    throw new Error(
+      `MuseScore render failed for ${inputMidiPath} with exit code ${result.status}`
+    );
+  }
+}
+
+function renderMidiStem({ soundFontPath, inputMidiPath, outPath, dry }) {
+  if (FLUIDSYNTH_BIN) {
+    runFluidsynth({ soundFontPath, inputMidiPath, outPath, dry });
+    return;
+  }
+
+  runMuseScoreRender({ inputMidiPath, outPath });
 }
 
 async function main() {
@@ -231,7 +344,7 @@ async function main() {
 
   console.log(`input midi: ${inputMidiPath}`);
   console.log(`soundfont: ${soundFontPath}`);
-  console.log(`renderer: ${FLUIDSYNTH_BIN}`);
+  console.log(`renderer: ${RENDERER_NAME} ${RENDERER_BIN || "not found"}`);
   console.log(
     `stems: ${stems
       .map((stem) => `${stem.name}<-${stem.sourceNames.join(",")} tracks=${stem.trackIndices.join(",")}`)
@@ -244,7 +357,7 @@ async function main() {
     const splitWavPath = path.join(outputDir, `${stem.name}.wav`);
 
     await fs.writeFile(splitMidiPath, Buffer.from(writeMidi(splitMidi)));
-    runFluidsynth({
+    renderMidiStem({
       soundFontPath,
       inputMidiPath: splitMidiPath,
       outPath: splitWavPath,

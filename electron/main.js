@@ -107,42 +107,157 @@ async function findTempFileByStoragePath(storagePath) {
   return ''
 }
 
+async function findMuseScoreMacCommands() {
+  const appNames = ['MuseScore Studio', 'MuseScore 4', 'MuseScore', 'MuseScore 3']
+  const executableNames = ['mscore', 'MuseScore', 'MuseScore Studio', 'MuseScore4', 'musescore']
+  const appDirs = [
+    '/Applications',
+    path.join(app.getPath('home'), 'Applications'),
+  ]
+  const commands = []
+
+  for (const appDir of appDirs) {
+    for (const appName of appNames) {
+      const bundlePath = path.join(appDir, `${appName}.app`, 'Contents', 'MacOS')
+
+      for (const executableName of executableNames) {
+        const executablePath = path.join(bundlePath, executableName)
+
+        if (await fileExists(executablePath)) {
+          commands.push({
+            command: executablePath,
+            label: executablePath,
+          })
+        }
+      }
+    }
+  }
+
+  return commands
+}
+
+function sendMuseScoreLog(storagePath, filePath, stream, message) {
+  if (!message || !mainWindow || mainWindow.isDestroyed()) {
+    return
+  }
+
+  mainWindow.webContents.send('musescore-log', {
+    storagePath,
+    filePath,
+    stream,
+    message,
+  })
+}
+
+async function launchMuseScoreWithCommand(filePath, storagePath, command) {
+  sendMuseScoreLog(storagePath, filePath, 'launcher', `Trying executable: ${command}`)
+
+  await new Promise((resolve, reject) => {
+    const child = spawn(command, [filePath], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+
+    const forwardLog = (stream, chunk) => {
+      const message = chunk.toString().trim()
+
+      if (!message || !mainWindow || mainWindow.isDestroyed()) {
+        return
+      }
+
+      sendMuseScoreLog(storagePath, filePath, stream, message)
+    }
+
+    child.stdout?.on('data', (chunk) => forwardLog('stdout', chunk))
+    child.stderr?.on('data', (chunk) => forwardLog('stderr', chunk))
+    child.once('error', reject)
+    child.once('spawn', () => {
+      child.unref()
+      resolve()
+    })
+  })
+
+  sendMuseScoreLog(storagePath, filePath, 'launcher', `Spawned executable: ${command}`)
+  return command
+}
+
+async function launchMuseScoreWithMacApp(filePath, storagePath) {
+  const appNames = ['MuseScore Studio', 'MuseScore 4', 'MuseScore', 'MuseScore 3']
+
+  for (const appName of appNames) {
+    try {
+      sendMuseScoreLog(storagePath, filePath, 'launcher', `Trying macOS app: ${appName}`)
+
+      await new Promise((resolve, reject) => {
+        let stderr = ''
+        const child = spawn('open', ['-a', appName, filePath], {
+          stdio: ['ignore', 'ignore', 'pipe'],
+        })
+
+        child.stderr?.on('data', (chunk) => {
+          stderr += chunk.toString()
+        })
+        child.once('error', reject)
+        child.once('close', (code) => {
+          if (code === 0) {
+            resolve()
+            return
+          }
+
+          reject(new Error(stderr.trim() || `Could not open ${appName}.`))
+        })
+      })
+
+      sendMuseScoreLog(storagePath, filePath, 'launcher', `macOS accepted open request: ${appName}`)
+      return `open -a "${appName}"`
+    } catch (error) {
+      sendMuseScoreLog(
+        storagePath,
+        filePath,
+        'launcher',
+        `macOS app failed: ${appName}: ${
+          error instanceof Error ? error.message : 'unknown error'
+        }`,
+      )
+      // Try the next likely macOS application name.
+    }
+  }
+
+  if (process.platform === 'darwin') {
+    for (const { command } of await findMuseScoreMacCommands()) {
+      try {
+        return await launchMuseScoreWithCommand(filePath, storagePath, command)
+      } catch {
+        // Try the next bundled executable as a fallback.
+      }
+    }
+  }
+
+  throw new Error('MuseScore app not found.')
+}
+
 async function launchMuseScore(filePath, storagePath) {
+  if (process.platform === 'darwin') {
+    if (process.env.MUSESCORE_LAUNCH_MODE === 'mac') {
+      return launchMuseScoreWithMacApp(filePath, storagePath)
+    }
+
+    for (const { command } of await findMuseScoreMacCommands()) {
+      try {
+        return await launchMuseScoreWithCommand(filePath, storagePath, command)
+      } catch {
+        // Try the next bundled executable.
+      }
+    }
+
+    return launchMuseScoreWithMacApp(filePath, storagePath)
+  }
+
   const commands = ['musescore', 'mscore', 'MuseScore4', 'MuseScore']
 
   for (const command of commands) {
     try {
-      await new Promise((resolve, reject) => {
-        const child = spawn(command, [filePath], {
-          detached: true,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
-
-        const forwardLog = (stream, chunk) => {
-          const message = chunk.toString().trim()
-
-          if (!message || !mainWindow || mainWindow.isDestroyed()) {
-            return
-          }
-
-          mainWindow.webContents.send('musescore-log', {
-            storagePath,
-            filePath,
-            stream,
-            message,
-          })
-        }
-
-        child.stdout?.on('data', (chunk) => forwardLog('stdout', chunk))
-        child.stderr?.on('data', (chunk) => forwardLog('stderr', chunk))
-        child.once('error', reject)
-        child.once('spawn', () => {
-          child.unref()
-          resolve()
-        })
-      })
-
-      return command
+      return await launchMuseScoreWithCommand(filePath, storagePath, command)
     } catch (error) {
       if (error?.code === 'ENOENT') {
         continue
@@ -152,7 +267,11 @@ async function launchMuseScore(filePath, storagePath) {
     }
   }
 
-  throw new Error('MuseScore command not found. Expected `musescore <file>` to be available.')
+  throw new Error(
+    process.platform === 'darwin'
+      ? 'MuseScore app not found. Expected MuseScore Studio, MuseScore 4, MuseScore, or MuseScore 3 in /Applications or ~/Applications.'
+      : 'MuseScore command not found. Expected `musescore <file>` to be available.',
+  )
 }
 
 async function launchVSCode(filePath) {
@@ -414,7 +533,7 @@ app.whenReady().then(() => {
       console.log('[run-media-generation] existingTempVideoPath', existingTempVideoPath)
       console.log('[run-media-generation] resolvedVideoPath', resolvedVideoPath)
 
-      return await runScriptWithArgs(
+      const generationResult = await runScriptWithArgs(
         scriptPath,
         [
           resolvedInputPath,
@@ -428,6 +547,21 @@ app.whenReady().then(() => {
         ],
         runId,
       )
+
+      const outputDir = path.join(appRoot, 'tmp')
+
+      return {
+        ...generationResult,
+        outputDir,
+        outputPaths: {
+          countInAndMetronome: path.join(outputDir, 'countInAndMetronome.mid'),
+          events: path.join(outputDir, 'events.json'),
+          positions: path.join(outputDir, 'positions.spos'),
+          songWithTabs: path.join(outputDir, 'song_with_tabs.mscz'),
+          scoreSvg: path.join(outputDir, 'score.svg'),
+          video: path.join(outputDir, 'video.mp4'),
+        },
+      }
     } catch (error) {
       console.error('[run-media-generation] failed', error)
       return {

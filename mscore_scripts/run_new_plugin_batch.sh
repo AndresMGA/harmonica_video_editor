@@ -2,19 +2,32 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=/dev/null
 source "$SCRIPT_DIR/portable_common.sh"
 
 plugin_source="$SCRIPT_DIR/new.qml"
-plugin_target="/home/andres/Documents/MuseScore4/Plugins/new.qml"
+plugin_target="$(find_plugins_dir)/new.qml"
 
 if [ ! -f "$plugin_source" ]; then
     echo "plugin source not found: $plugin_source" >&2
     exit 1
 fi
 
+escape_sed_replacement() {
+    printf '%s' "$1" | sed 's/[\/&]/\\&/g'
+}
+
+tmp_dir="$APP_ROOT/tmp"
+status_json="$SCRIPT_DIR/status.json"
+escaped_tmp_dir="$(escape_sed_replacement "$tmp_dir")"
+escaped_status_json="$(escape_sed_replacement "$status_json")"
+
 mkdir -p "$(dirname "$plugin_target")"
-cp "$plugin_source" "$plugin_target"
+sed \
+    -e "s/__HVE_TMP_DIR__/$escaped_tmp_dir/g" \
+    -e "s/__HVE_STATUS_JSON__/$escaped_status_json/g" \
+    "$plugin_source" > "$plugin_target"
 echo "installed MuseScore plugin: $plugin_target"
 
 if [ "$#" -ne 8 ]; then
@@ -66,9 +79,7 @@ if [[ "$input_score" != /* ]]; then
     input_score="$(cd "$(dirname "$input_score")" && pwd)/$(basename "$input_score")"
 fi
 
-tmp_dir="$HOME/harmonica_video_editor/tmp"
 job_json="$SCRIPT_DIR/job.json"
-status_json="$SCRIPT_DIR/status.json"
 musescore_cmd="$(find_musescore_cmd)"
 song_with_tabs="$tmp_dir/song_with_tabs.mscz"
 
@@ -149,7 +160,7 @@ if [ -n "$existing_video" ] && [ -f "$existing_video" ]; then
 else
     echo "no existing video source found, creating a new video.mp4"
 fi
-"$HOME/harmonica_video_editor/ffmpeg_scripts/build_surround_video.sh" \
+"$APP_ROOT/ffmpeg_scripts/build_surround_video.sh" \
     "$tmp_dir" \
     "$existing_video" \
     "$update_harmonica" \

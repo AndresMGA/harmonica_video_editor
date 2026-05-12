@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/ffmpeg_common.sh"
+
 usage() {
   cat <<'EOF'
 Usage: ./ffmpeg_prepend_blank.sh <prepend_ms> <input_path> <output_path>
@@ -42,12 +46,12 @@ if [ ! -f "$INPUT_PATH" ]; then
   exit 1
 fi
 
-require_cmd ffmpeg
+require_cmd "$FFMPEG_BIN"
 require_cmd awk
 
 PREPEND_SEC="$(awk -v prepend_ms="$PREPEND_MS" 'BEGIN { printf "%.3f", prepend_ms / 1000 }')"
 
-ffmpeg -y -i "$INPUT_PATH" \
+"$FFMPEG_BIN" -y -i "$INPUT_PATH" \
   -filter:v "tpad=start_duration=${PREPEND_SEC}:start_mode=add:color=black,setpts=PTS-STARTPTS" \
   -map 0:v -map 0:a \
   -c:v libx264 -c:a copy \

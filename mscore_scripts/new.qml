@@ -7,7 +7,7 @@ MuseScore {
     description: "new"
     menuPath: "Plugins.new"
     requiresScore: true
-    property string tmpDir: "/home/andres/harmonica_video_editor/tmp"
+    property string tmpDir: "__HVE_TMP_DIR__"
     property real svgDpi: 12.0
 
     property int defaultTabHoles: 12
@@ -233,7 +233,7 @@ function tmpPath() {
 }
 
 function statusPath() {
-    return "/home/andres/harmonica_video_editor/mscore_scripts/status.json";
+    return "__HVE_STATUS_JSON__";
 }
 
 function eventsPath() {

@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/ffmpeg_common.sh"
+
 usage() {
   cat <<'EOF'
 Usage: ./ffmpeg_trim_all.sh <trim_ms> <input_path> <output_path> [duration_ms]
@@ -55,7 +59,7 @@ if [ -n "$DURATION_MS" ]; then
   esac
 fi
 
-require_cmd ffmpeg
+require_cmd "$FFMPEG_BIN"
 require_cmd awk
 
 ABS_TRIM_MS=$(( TRIM_MS < 0 ? -TRIM_MS : TRIM_MS ))
@@ -65,7 +69,7 @@ if [ -n "$DURATION_MS" ]; then
   ABS_DURATION_MS=$(( DURATION_MS < 0 ? -DURATION_MS : DURATION_MS ))
   DURATION_SEC="$(awk -v duration_ms="$ABS_DURATION_MS" 'BEGIN { printf "%.3f", duration_ms / 1000 }')"
 
-  ffmpeg -y -i "$INPUT_PATH" -filter_complex "
+  "$FFMPEG_BIN" -y -i "$INPUT_PATH" -filter_complex "
 [0:v]trim=start=${TRIM_SEC}:duration=${DURATION_SEC},setpts=PTS-STARTPTS[v];
 [0:a]atrim=start=${TRIM_SEC}:duration=${DURATION_SEC},asetpts=PTS-STARTPTS[a]
 " \
@@ -74,7 +78,7 @@ if [ -n "$DURATION_MS" ]; then
     -avoid_negative_ts make_zero \
     "$OUTPUT_FILE"
 else
-  ffmpeg -y -i "$INPUT_PATH" -filter_complex "
+  "$FFMPEG_BIN" -y -i "$INPUT_PATH" -filter_complex "
 [0:v]trim=start=${TRIM_SEC},setpts=PTS-STARTPTS[v];
 [0:a]atrim=start=${TRIM_SEC},asetpts=PTS-STARTPTS[a]
 " \

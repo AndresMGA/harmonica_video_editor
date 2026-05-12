@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/ffmpeg_common.sh"
 
 if [[ -f "$PROJECT_ROOT/.env" ]]; then
   set -a
@@ -72,7 +74,7 @@ EOF
 }
 
 require_cmd curl
-require_cmd ffmpeg
+require_cmd "$FFMPEG_BIN"
 require_cmd awk
 require_cmd sed
 
@@ -167,7 +169,7 @@ else
       exit 1
     fi
 
-    ffmpeg -y -i "$SHIFTED_FILE" -t "$DURATION_SEC" \
+    "$FFMPEG_BIN" -y -i "$SHIFTED_FILE" -t "$DURATION_SEC" \
       -map 0:v -map 0:a -c:v copy -c:a copy \
       -avoid_negative_ts make_zero "$OUTPUT_FILE"
   else

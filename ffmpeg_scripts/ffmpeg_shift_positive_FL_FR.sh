@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/ffmpeg_common.sh"
+
 usage() {
   cat <<'EOF'
 Usage: ./ffmpeg_shift_positive_FL_FR.sh <shift_ms> <input_path> <output_path>
@@ -43,11 +47,11 @@ if [ ! -f "$INPUT_PATH" ]; then
   exit 1
 fi
 
-require_cmd ffmpeg
+require_cmd "$FFMPEG_BIN"
 
 ABS_SHIFT_MS=$(( SHIFT_MS < 0 ? -SHIFT_MS : SHIFT_MS ))
 
-ffmpeg -y -i "$INPUT_PATH" -filter_complex "
+"$FFMPEG_BIN" -y -i "$INPUT_PATH" -filter_complex "
 [0:a]channelsplit=channel_layout=5.1[FL][FR][FC][LFE][SL][SR];
 [FL]adelay=${ABS_SHIFT_MS}|${ABS_SHIFT_MS}[FLd];
 [FR]adelay=${ABS_SHIFT_MS}|${ABS_SHIFT_MS}[FRd];

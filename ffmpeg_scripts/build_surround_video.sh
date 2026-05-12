@@ -12,7 +12,11 @@ update_harmonica=$3
 update_accompaniment=$4
 update_metronome=$5
 
-ffmpeg_bin=${FFMPEG_BIN:-ffmpeg}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=/dev/null
+source "$SCRIPT_DIR/ffmpeg_common.sh"
+
+ffmpeg_bin=$FFMPEG_BIN
 ffprobe_bin=${FFPROBE_BIN:-ffprobe}
 work_dir="$tmp_dir/ffmpeg_build"
 output_video="$tmp_dir/video.mp4"

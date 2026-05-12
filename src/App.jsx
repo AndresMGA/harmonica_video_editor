@@ -117,10 +117,6 @@ function getHarmonicaHoleCount(storagePath) {
   return null
 }
 
-function localTmpPath(fileName) {
-  return `/home/andres/harmonica_video_editor/tmp/${fileName}`
-}
-
 function contentTypeForPath(filePath) {
   const extension = getFileExtension(filePath)
 
@@ -136,9 +132,9 @@ function contentTypeForPath(filePath) {
   }
 }
 
-async function generatedSvgUploadTargets(folderPath) {
+async function generatedSvgUploadTargets(folderPath, outputDir = '') {
   const result = await window.electronAPI?.listLocalFiles?.({
-    directoryPath: '/home/andres/harmonica_video_editor/tmp',
+    directoryPath: outputDir,
     prefix: 'score',
     extension: '.svg',
   })
@@ -157,13 +153,13 @@ async function generatedSvgUploadTargets(folderPath) {
   }))
 }
 
-async function cleanupGeneratedMediaFiles() {
-  const svgTargets = await generatedSvgUploadTargets('')
+async function cleanupGeneratedMediaFiles(outputPaths, outputDir) {
+  const svgTargets = await generatedSvgUploadTargets('', outputDir)
   const filePaths = [
-    localTmpPath('countInAndMetronome.mid'),
-    localTmpPath('events.json'),
-    localTmpPath('positions.spos'),
-    localTmpPath('song_with_tabs.mscz'),
+    outputPaths?.countInAndMetronome,
+    outputPaths?.events,
+    outputPaths?.positions,
+    outputPaths?.songWithTabs,
     ...svgTargets.map((target) => target.localPath),
   ]
 
@@ -2390,6 +2386,13 @@ function App() {
             message: result.message || 'Failed to open the score in MuseScore.',
           },
     )
+    if (result.ok) {
+      setMuseScoreLogs((currentLogs) =>
+        currentLogs.length
+          ? currentLogs
+          : [`Opened in ${result.command}: ${result.filePath}`],
+      )
+    }
     setOpenScoreSession(
       result.ok
         ? {
@@ -2502,7 +2505,6 @@ function App() {
       openScoreSession?.storagePath === expectedStoragePath
         ? openScoreSession.localFilePath
         : ''
-    const usedEditedLocalScore = Boolean(matchingLocalScorePath)
     const audioUpdateRequested =
       updateMediaState.updateHarmonicaAudio ||
       updateMediaState.updateAccompanimentAudio ||
@@ -2558,6 +2560,9 @@ function App() {
       )
 
       if (result.ok) {
+        const outputPaths = result.outputPaths ?? {}
+        const outputDir = result.outputDir ?? ''
+
         pushUpdateMediaLog('Generation finished successfully.')
         pushUpdateMediaLog('Preparing uploads...')
         const folderListing = await listBucketFolder(folderPath, 0)
@@ -2566,19 +2571,19 @@ function App() {
 
         if (updateMediaState.updateJson) {
           uploadTargets.push({
-            localPath: localTmpPath('events.json'),
+            localPath: outputPaths.events,
             storagePath: `${folderPath}/events.json`,
           })
         }
 
         if (updateMediaState.updateSvg) {
-          const svgTargets = await generatedSvgUploadTargets(folderPath)
+          const svgTargets = await generatedSvgUploadTargets(folderPath, outputDir)
 
           if (svgTargets.length) {
             uploadTargets.push(...svgTargets)
           } else {
             uploadTargets.push({
-              localPath: localTmpPath('score.svg'),
+              localPath: outputPaths.scoreSvg,
               storagePath: `${folderPath}/score.svg`,
             })
           }
@@ -2586,26 +2591,19 @@ function App() {
 
         if (audioUpdateRequested) {
           uploadTargets.push({
-            localPath: localTmpPath('video.mp4'),
+            localPath: outputPaths.video,
             storagePath: `${folderPath}/video.mp4`,
           })
         }
 
-        if (usedEditedLocalScore) {
-          uploadTargets.push({
-            localPath: matchingLocalScorePath,
-            storagePath: expectedStoragePath,
-          })
-          pushUpdateMediaLog(
-            `Will also upload edited score back to ${expectedStoragePath}`,
-          )
-        }
-
+        const safeUploadTargets = uploadTargets.filter(
+          (target) => getFileExtension(target.storagePath) !== '.mscz',
+        )
         const undoFolderPath = `${folderPath}/.undo`
         const undoStamp = new Date().toISOString().replaceAll(':', '-')
         const existingFilePaths = new Set(folderListing.files.map((file) => file.path))
 
-        if (uploadTargets.length) {
+        if (safeUploadTargets.length) {
           pushUpdateMediaLog(`Ensuring ${undoFolderPath} exists`)
           await supabase.storage
             .from(bucket)
@@ -2615,7 +2613,7 @@ function App() {
             })
         }
 
-        for (const target of uploadTargets) {
+        for (const target of safeUploadTargets) {
           if (existingFilePaths.has(target.storagePath)) {
             const undoPath = `${undoFolderPath}/${undoStamp}-${getBaseName(target.storagePath)}`
             pushUpdateMediaLog(`Moving ${target.storagePath} -> ${undoPath}`)
@@ -2631,7 +2629,7 @@ function App() {
           }
         }
 
-        for (const target of uploadTargets) {
+        for (const target of safeUploadTargets) {
           pushUpdateMediaLog(`Uploading ${target.storagePath}`)
           const fileBlob = await readLocalFileBlob(target.localPath)
           const { error: uploadError } = await supabase.storage
@@ -2647,7 +2645,7 @@ function App() {
         }
 
         pushUpdateMediaLog('Upload step finished successfully.')
-        const deletedFiles = await cleanupGeneratedMediaFiles()
+        const deletedFiles = await cleanupGeneratedMediaFiles(outputPaths, outputDir)
         if (deletedFiles.length) {
           pushUpdateMediaLog(`Cleaned up ${deletedFiles.length} generated tmp file(s).`)
         }
