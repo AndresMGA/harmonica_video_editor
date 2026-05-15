@@ -28,3 +28,6 @@ tmp/*
 .codex
 ffmpeg
 CORRECTIONS*
+mscore_scripts/job.json
+mscore_scripts/status.json
+mscore_scripts/jobtst.json

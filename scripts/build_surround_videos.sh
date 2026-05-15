@@ -4,7 +4,9 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_DIR="$ROOT_DIR/output_files"
-MSCORE_BIN="/home/andres/MuseScore4.3/MuseScore/builds/Linux-Qt-usr-Make-Release/install/bin/mscore"
+# shellcheck source=/dev/null
+source "$ROOT_DIR/mscore_scripts/portable_common.sh"
+MSCORE_BIN="${MSCORE_BIN:-$(find_musescore_cmd)}"
 
 if [[ -f "$ROOT_DIR/.env" ]]; then
   set -a

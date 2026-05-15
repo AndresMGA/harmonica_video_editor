@@ -85,6 +85,7 @@ song_with_tabs="$tmp_dir/song_with_tabs.mscz"
 
 mkdir -p "$tmp_dir"
 
+echo "musescore command: $musescore_cmd"
 echo "preparing job.json for $input_score"
 
 cat > "$job_json" <<JOBEOF
@@ -118,7 +119,7 @@ cat > "$status_json" <<STATUSEOF
 }
 STATUSEOF
 
-echo "calling musescore batch export"
+echo "calling musescore batch export: \"$musescore_cmd\" -j \"$job_json\" --extension musescore://extensions/v1/new.qml"
 "$musescore_cmd" -j "$job_json" --extension musescore://extensions/v1/new.qml
 echo "musescore batch export completed"
 echo "song_with_tabs.mscz generated at $song_with_tabs"
@@ -129,7 +130,7 @@ echo "countInAndMetronome.mid generated at $tmp_dir/countInAndMetronome.mid"
 if [ "$update_svg" = true ]; then
     echo "clearing previous score*.svg outputs"
     rm -f "$tmp_dir"/score.svg "$tmp_dir"/score-*.svg
-    echo "exporting multi-page SVG from song_with_tabs.mscz"
+    echo "exporting multi-page SVG: \"$musescore_cmd\" \"$song_with_tabs\" -o \"$tmp_dir/score.svg\""
     "$musescore_cmd" "$song_with_tabs" -o "$tmp_dir/score.svg"
     echo "svg export completed"
     if ls "$tmp_dir"/score*.svg >/dev/null 2>&1; then
