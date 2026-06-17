@@ -14,18 +14,98 @@ function sanitizeFileSegment(value) {
   return value.replace(/[^a-z0-9._-]+/gi, '_')
 }
 
-async function downloadFileToTemp(url, storagePath) {
+function normalizeStoragePath(value) {
+  if (!value) {
+    return ''
+  }
+
+  let normalized = String(value).trim()
+
+  try {
+    const parsedUrl = new URL(normalized)
+    const publicPrefix = '/storage/v1/object/public/'
+    const publicIndex = parsedUrl.pathname.indexOf(publicPrefix)
+
+    if (publicIndex >= 0) {
+      const pathAfterPublic = parsedUrl.pathname.slice(publicIndex + publicPrefix.length)
+      const slashIndex = pathAfterPublic.indexOf('/')
+      normalized = slashIndex >= 0 ? pathAfterPublic.slice(slashIndex + 1) : pathAfterPublic
+    } else {
+      normalized = parsedUrl.pathname
+    }
+  } catch {
+    // Plain storage paths are expected here.
+  }
+
+  try {
+    normalized = decodeURIComponent(normalized)
+  } catch {
+    // Keep the original value if it is not valid percent-encoded text.
+  }
+
+  return normalized.replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+/g, '/')
+}
+
+function ensureFileExtension(fileName, extension) {
+  if (!extension || fileName.toLowerCase().endsWith(extension.toLowerCase())) {
+    return fileName
+  }
+
+  return `${fileName}${extension}`
+}
+
+function storagePathsMatch(left, right) {
+  const normalizedLeft = normalizeStoragePath(left)
+  const normalizedRight = normalizeStoragePath(right)
+
+  return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight)
+}
+
+function resolveTempLocalPath(tempDir, localFile, metadataPath) {
+  if (localFile) {
+    const candidatePath = path.isAbsolute(localFile)
+      ? path.resolve(localFile)
+      : path.resolve(tempDir, localFile)
+    const resolvedTempDir = path.resolve(tempDir)
+    const relativeToTemp = path.relative(resolvedTempDir, candidatePath)
+
+    if (relativeToTemp && !relativeToTemp.startsWith('..') && !path.isAbsolute(relativeToTemp)) {
+      return candidatePath
+    }
+
+    return path.join(tempDir, path.basename(localFile))
+  }
+
+  return metadataPath.replace(/\.source\.json$/, '')
+}
+
+async function downloadFileToTemp(url, storagePath, options = {}) {
+  const fallbackName = options.fallbackName ?? 'download'
+  const requiredExtension = options.requiredExtension ?? ''
   const response = await fetch(url)
 
   if (!response.ok) {
-    throw new Error(`Score download failed with ${response.status}`)
+    throw new Error(`File download failed with ${response.status}`)
   }
 
   const fileBuffer = Buffer.from(await response.arrayBuffer())
   const tempDir = path.join(appRoot, 'tmp')
-  const baseName = sanitizeFileSegment(path.basename(storagePath || 'score.mscz') || 'score.mscz')
+  const normalizedStoragePath = normalizeStoragePath(storagePath)
+  let urlPathName = ''
+
+  try {
+    urlPathName = url ? new URL(url).pathname : ''
+  } catch {
+    urlPathName = ''
+  }
+
+  const sourceName =
+    path.basename(normalizedStoragePath || '') ||
+    path.basename(urlPathName || '') ||
+    fallbackName
+  const baseName = ensureFileExtension(sanitizeFileSegment(sourceName), requiredExtension)
   const timestamp = Date.now()
-  const fileName = `${timestamp}-${baseName.endsWith('.mscz') ? baseName : `${baseName}.mscz`}`
+  const fileName = `${timestamp}-${baseName}`
   const filePath = path.join(tempDir, fileName)
   const metadataPath = `${filePath}.source.json`
 
@@ -49,7 +129,14 @@ async function downloadFileToTemp(url, storagePath) {
 }
 
 async function downloadScoreFile(url, storagePath) {
-  return downloadFileToTemp(url, storagePath)
+  const normalizedStoragePath = normalizeStoragePath(storagePath)
+  const baseName = path.basename(normalizedStoragePath || 'score.mscz') || 'score.mscz'
+  const fallbackName = baseName.endsWith('.mscz') ? baseName : `${baseName}.mscz`
+
+  return downloadFileToTemp(url, storagePath, {
+    fallbackName,
+    requiredExtension: '.mscz',
+  })
 }
 
 async function fileExists(filePath) {
@@ -85,13 +172,14 @@ async function findTempFileByStoragePath(storagePath) {
         const metadataRaw = await fs.readFile(metadataPath, 'utf8')
         const metadata = JSON.parse(metadataRaw)
 
-        if (metadata?.storagePath !== storagePath) {
+        if (
+          !storagePathsMatch(metadata?.storagePath, storagePath) &&
+          !storagePathsMatch(metadata?.sourceUrl, storagePath)
+        ) {
           continue
         }
 
-        const localPath = metadata.localFile
-          ? path.join(tempDir, metadata.localFile)
-          : metadataPath.replace(/\.source\.json$/, '')
+        const localPath = resolveTempLocalPath(tempDir, metadata.localFile, metadataPath)
 
         if (await fileExists(localPath)) {
           return localPath

@@ -153,6 +153,7 @@ async function generatedSvgUploadTargets(folderPath, outputDir = '') {
   }))
 }
 
+// eslint-disable-next-line no-unused-vars -- tmp cleanup is intentionally disabled for now.
 async function cleanupGeneratedMediaFiles(outputPaths, outputDir) {
   const svgTargets = await generatedSvgUploadTargets('', outputDir)
   const filePaths = [
@@ -2567,7 +2568,12 @@ function App() {
         pushUpdateMediaLog('Preparing uploads...')
         const folderListing = await listBucketFolder(folderPath, 0)
 
-        const uploadTargets = []
+        const uploadTargets = [
+          {
+            localPath: outputPaths.songWithTabs,
+            storagePath: expectedStoragePath,
+          },
+        ]
 
         if (updateMediaState.updateJson) {
           uploadTargets.push({
@@ -2596,14 +2602,11 @@ function App() {
           })
         }
 
-        const safeUploadTargets = uploadTargets.filter(
-          (target) => getFileExtension(target.storagePath) !== '.mscz',
-        )
         const undoFolderPath = `${folderPath}/.undo`
         const undoStamp = new Date().toISOString().replaceAll(':', '-')
         const existingFilePaths = new Set(folderListing.files.map((file) => file.path))
 
-        if (safeUploadTargets.length) {
+        if (uploadTargets.length) {
           pushUpdateMediaLog(`Ensuring ${undoFolderPath} exists`)
           await supabase.storage
             .from(bucket)
@@ -2613,7 +2616,7 @@ function App() {
             })
         }
 
-        for (const target of safeUploadTargets) {
+        for (const target of uploadTargets) {
           if (existingFilePaths.has(target.storagePath)) {
             const undoPath = `${undoFolderPath}/${undoStamp}-${getBaseName(target.storagePath)}`
             pushUpdateMediaLog(`Moving ${target.storagePath} -> ${undoPath}`)
@@ -2629,7 +2632,7 @@ function App() {
           }
         }
 
-        for (const target of safeUploadTargets) {
+        for (const target of uploadTargets) {
           pushUpdateMediaLog(`Uploading ${target.storagePath}`)
           const fileBlob = await readLocalFileBlob(target.localPath)
           const { error: uploadError } = await supabase.storage
@@ -2645,10 +2648,11 @@ function App() {
         }
 
         pushUpdateMediaLog('Upload step finished successfully.')
-        const deletedFiles = await cleanupGeneratedMediaFiles(outputPaths, outputDir)
-        if (deletedFiles.length) {
-          pushUpdateMediaLog(`Cleaned up ${deletedFiles.length} generated tmp file(s).`)
-        }
+        // Keep generated tmp files for now so follow-up runs can reuse/debug them.
+        // const deletedFiles = await cleanupGeneratedMediaFiles(outputPaths, outputDir)
+        // if (deletedFiles.length) {
+        //   pushUpdateMediaLog(`Cleaned up ${deletedFiles.length} generated tmp file(s).`)
+        // }
 
         const targetNode = findTreeNode(browserState.nodes, folderPath)
         if (targetNode) {
